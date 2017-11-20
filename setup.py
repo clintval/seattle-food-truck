@@ -8,7 +8,7 @@ setup(
     url='https://github.com/clintval/seattle-food-truck',
     license='MIT',
     install_requires=[
-        'pandas',
+        'python-dateutil',
         'requests'],
     scripts=[],  # CLI coming!
     packages=find_packages())
