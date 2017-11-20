@@ -1,19 +1,49 @@
-import json
 import datetime
+
+from functools import partial
+from urllib.parse import quote_plus
+from math import radians, cos, sin, asin, sqrt
 
 import requests
 
-from pandas import to_datetime  # Hope to get rid of this dependency soon!
-
+# Dependency exists because the Python standard library cannot parse a
+# timestamp with a colon in the time zone offset.
+from dateutil.parser import parse as date_parse
 
 __all__ = [
-    'Location',
-    'SeattleFoodTruckAPI']
+    'SeattleFoodTruckAPI',
+    'haversine_distance',
+    'lat_long_from_address',
+    'humanize_list']
 
 
-class Location(object):
-    """A listing of all buildings and their location codes."""
-    PI_building = '69'
+def haversine_distance(lat_long1, lat_long2):
+    """Distance between two points on Earth in miles"""
+    lon1, lat1, lon2, lat2 = map(radians, [*lat_long1, *lat_long2])
+
+    long_dist = lon2 - lon1
+    lat_dist = lat2 - lat1
+    a = sin(lat_dist / 2)**2 + cos(lat1) * cos(lat2) * sin(long_dist / 2)**2
+    c = 2 * asin(sqrt(a))
+
+    miles = 3959 * c  # Radius of Earth in miles
+    return miles
+
+
+def lat_long_from_address(address):
+    """Returns the latitude and longitude from an address using the Google maps
+    API for geocoding.
+
+    """
+    URL = 'https://maps.googleapis.com/maps/api/geocode/json?'
+    try:
+        response = requests.get(URL, {'address': quote_plus(address)})
+        results, *_ = response.json().get('results')
+        location = results.get('geometry').get('location')
+        lat_long = location['lat'], location['lng']
+    except ValueError:
+        raise ValueError('Lat/Long not found for address: {address}')
+    return lat_long
 
 
 def humanize_list(array):
@@ -50,14 +80,76 @@ def humanize_list(array):
         return ', '.join(new)
 
 
-class Truck():
+class lazyproperty(object):
+    """Decorator function to memoize an expensive property"""
+
+    def __init__(self, func):
+        self.func = func
+
+    def __get__(self, obj, objtype=None):
+        if obj is None:
+            return self
+        value = obj.__dict__[self.func.__name__] = self.func(obj)
+        return value
+
+    def __repr__(self):
+        return f'<self.__class__.__name__ func=self.func>'
+
+
+class Location():
+    """Represents a location where a food truck may appear"""
+
     def __init__(self, mapping):
-        self.featured_photo = mapping.get('featured_photo')
-        self.food_categories = mapping.get('food_categories')
-        self.id = mapping.get('id')
-        self.name = mapping.get('name')
-        self.trailer = mapping.get('trailer')
-        self.uid = mapping.get('uid')
+        self.__dict__.update(mapping)
+
+    @property
+    def lat_long(self):
+        """Return the latitude and longitude as a tuple"""
+        return self.latitude, self.longitude
+
+    def distance_from(self, address=None, lat_long=None):
+        """The distance in miles between this food truck locationa and a
+        specified location. Either `address` or `lat_long` must be specified.
+
+        Parameters
+        ----------
+        address : str
+            The address of the query location.
+        lat_long : tuple of floats
+            The latitude and longitude of the query location.
+
+        Returns
+        -------
+        distance : float
+            The distance in miles between the two locations.
+
+        """
+        if address is None and lat_long is None:
+            raise ValueError('`address` or `lat_long` must be specified.')
+        elif address is not None:
+            lat_long = lat_long_from_address(address)
+        elif (
+            lat_long is not None and
+            not all(isinstance(_, float) for _ in lat_long)
+        ):
+            raise ValueError('`lat_long` must be a list of floats.')
+
+        distance = haversine_distance(self.lat_long, lat_long)
+        return distance
+
+    def __repr__(self):
+        return (
+            f'{self.__class__.__name__}('
+            f'name="{self.name.strip()}", '
+            f'address="{self.address}", '
+            f'uid={self.uid})')
+
+
+class Truck():
+    """Represents a food truck in Seattle"""
+
+    def __init__(self, mapping):
+        self.__dict__.update(mapping)
 
     @property
     def food_description(self):
@@ -71,51 +163,131 @@ class Truck():
 
 
 class SeattleFoodTruckAPI():
-    def __init__(self, location):
-        # Hosting for the main domain and image hosting platform.
-        self.host = 'https://www.seattlefoodtruck.com'
+    """A class that represents the API at www.seattlefoodtrucks.com."""
+
+    def __init__(self):
+        self._location = None
+
+        self.host = 'https://www.seattlefoodtruck.com/api/{table}?'
         self.img_host = ('https://s3-us-west-2.amazonaws.com/'
                          'seattlefoodtruck-uploads-prod')
 
-        # API keys and values needed to get truck bookings.
-        self.options = {
-            'for_locations': location,
+    def events_by_page(self):
+        """Lists the events at a given location
+
+        Returns
+        -------
+        events : lsit
+            A list of events dictionaries.
+
+        """
+
+        # A location must first be bound to this API before events can be
+        # queried since so many exist throughout the city.
+        if self.location is None:
+            raise ValueError('The location must set with `api.location = _`.')
+
+        params = {
+            'for_locations': str(self.location.uid),
             'with_active_trucks': 'true',
             'include_bookings': 'true',
             'with_booking_status': 'approved'}
 
-    def events_by_page(self, page):
-        """Consider using the field `total_pages` to grab all pages in the
-        pagination so a user is guaranteed to find a food truck when using the
-        ``trucks_on_day()`` method if one such glorious food truck exists.
+        # Paginate through results with these parameters on the `events` table.
+        events = self._paginate('events', params)
+        return events
+
+    def location_closest_to(self, address=None, lat_long=None):
+        """Find the food truck location closest to the query location
 
         Parameters
         ----------
-        page : int
-            The page to query from the paginator.
+        address : str
+            The address of the query location.
+        lat_long : tuple of floats
+            The latitude and longitude of the query location.
 
         Returns
         -------
-        events : dict
-            A JSON dictionary of all events on the requested page.
+        location : Location
+            The food truck location closed to the query location.
 
         """
-        # Join all key values and concatenate them with ampersands
-        query = '&'.join('='.join((k, v)) for k, v in self.options.items())
+        if address is None and lat_long is None:
+            raise ValueError('`address` or `lat_long` must be specified.')
+        elif address is not None:
+            lat_long = lat_long_from_address(address)
+        elif (
+            lat_long is not None and
+            not all(isinstance(_, float) for _ in lat_long)
+        ):
+            raise ValueError('`lat_long` must be a list of floats.')
 
-        # Make a GET request and parse the resulting call to JSON.
-        response = requests.get(f'{self.host}/api/events?page={page}&{query}')
-        events = json.loads(response.text).get('events')
-        return events
+        distance_from_reference = partial(
+            haversine_distance,
+            lat_long2=lat_long)
+
+        distances = list(map(
+            distance_from_reference,
+            [l.lat_long for l in self.locations]))
+        location = self.locations[distances.index(min(distances))]
+        return location
+
+    @property
+    def location(self):
+        return self._location
+
+    @location.setter
+    def location(self, location):
+        if location is not None and not isinstance(location, Location):
+            raise ValueError('`location` must be of type `Location`.')
+        self._location = location
+
+    @lazyproperty
+    def locations(self):
+        """A memoized property of all locations at instantiation time."""
+        # Paginate through results on the `locations` table.
+        locations = list(map(Location, self._paginate('locations')))
+        return locations
+
+    def _paginate(self, table, params=None):
+        """Helper function to paginate through the pages of a call to the web
+        API. An initial call is made to set the `total_pages` variable and then
+        all further pages are requested.
+
+        Parameters
+        ----------
+        table : str
+            The table name from the web host API.
+        params : None or dict
+            A list of API parameters.
+
+        Returns
+        -------
+        content : list
+            All items found in the given table as a result of pagination.
+        """
+        params = params or {}
+        content = []
+
+        page = total_pages = 1
+        while page <= total_pages:
+            json = requests.get(
+                self.host.format(table=table),
+                params={**params, 'page': str(page)}).json()
+
+            page += 1
+            total_pages = json.get('pagination').get('total_pages')
+            content.extend(json.get(table))
+        return content
 
     def trucks_on_day(self, date):
+        """Returns the food trucks at a given date"""
         assert isinstance(date, datetime.date)
+
         trucks = []
-        for event in self.events_by_page(1):
-            # Would love to remove pandas dependency but there is a stupid
-            # colon in the timezone field and datetime.strptime is not
-            # compatible with that format.
-            scheduled_date = to_datetime(event.get('start_time')).date()
+        for event in self.events_by_page():
+            scheduled_date = date_parse(event.get('start_time')).date()
 
             # Instantiate all trucks that have been booked on this event.
             if date == scheduled_date:
@@ -135,16 +307,11 @@ class SeattleFoodTruckAPI():
         return self.trucks_on_day(today + datetime.timedelta(days=1))
 
     def trucks_yesterday(self):
-        """Returns yesterdays food trucks so you can be sad you missed them"""
+        """Returns yesterday's food trucks so you can be sad you missed them"""
         today = datetime.datetime.today().date()
         return self.trucks_on_day(today - datetime.timedelta(days=1))
 
     def __repr__(self):
         return (
             f'{self.__class__.__name__}('
-            f'location="{self.parameters["for_locations"]}")')
-
-
-if __name__ == '__main__':  # Usage... will remove in favor of scripts/xxx.py
-    api = SeattleFoodTruckAPI(Location.PI_building)
-    print(api.trucks_today())
+            f'location="{self.location}")')
