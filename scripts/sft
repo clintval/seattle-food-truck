@@ -1,0 +1,54 @@
+#!/usr/bin/env python3
+import click
+
+from terminaltables import SingleTable
+
+from seattle_food_truck import Location, SeattleFoodTruckClient
+
+
+@click.group()
+@click.pass_context
+def cli(context):
+    """Tool to get you the food trucks scheduled near you in Seattle."""
+    pass
+
+
+@cli.command()
+@click.pass_context
+def locations(context):
+    """Print the locations with food truck bookings."""
+    client = SeattleFoodTruckClient()
+
+    table = SingleTable([['Name', 'UID']], title='Locations')
+
+    for location in client.locations:
+        table.table_data.append([location.name.strip(), location.uid])
+    print(table.table)
+
+
+@cli.command()
+@click.pass_context
+@click.option('--location-uid', required=True)
+def trucks_today(context, location_uid):
+    """Print the truck bookings today."""
+    client = SeattleFoodTruckClient()
+    client.location = Location({'uid': int(location_uid)})
+
+    for truck in client.trucks_today():
+        print(truck)
+
+
+@cli.command()
+@click.pass_context
+@click.option('--location-uid', required=True)
+def trucks_tomorrow(context, location_uid):
+    """Print the truck bookings tomorrow"""
+    client = SeattleFoodTruckClient()
+    client.location = Location({'uid': int(location_uid)})
+
+    for truck in client.trucks_tomorrow():
+        print(truck)
+
+
+if __name__ == '__main__':
+    cli(obj={})
