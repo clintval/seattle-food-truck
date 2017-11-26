@@ -6,6 +6,7 @@ setup(
     author='clintval',
     author_email='valentine.clint@gmail.com',
     url='https://github.com/clintval/seattle-food-truck',
+    download_url='https://github.com/clintval/seattle-food-truck/releases/tag/0.1.0',
     license='MIT',
     keywords=['seattle', 'food', 'truck'],
     install_requires=[
