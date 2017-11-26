@@ -11,7 +11,9 @@ import requests
 from dateutil.parser import parse as date_parse
 
 __all__ = [
-    'SeattleFoodTruckAPI',
+    'Location',
+    'SeattleFoodTruckClient',
+    'Truck',
     'haversine_distance',
     'lat_long_from_address',
     'humanize_list']
@@ -33,6 +35,17 @@ def haversine_distance(lat_long1, lat_long2):
 def lat_long_from_address(address):
     """Returns the latitude and longitude from an address using the Google maps
     API for geocoding.
+
+    Parameters
+    ----------
+    address : str
+        An address on Earth. Preferrably in Seattle.
+
+    Returns
+    -------
+    lat_long : tuple of float
+        The first latitude and longitude of the address found using the Google
+            maps API for geocoding.
 
     """
     URL = 'https://maps.googleapis.com/maps/api/geocode/json?'
@@ -162,7 +175,7 @@ class Truck():
             f'"{self.name}", style="{self.food_description}")')
 
 
-class SeattleFoodTruckAPI():
+class SeattleFoodTruckClient():
     """A class that represents the API at www.seattlefoodtrucks.com."""
 
     def __init__(self):
@@ -181,8 +194,7 @@ class SeattleFoodTruckAPI():
             A list of events dictionaries.
 
         """
-
-        # A location must first be bound to this API before events can be
+        # A location must first be bound to this client before events can be
         # queried since so many exist throughout the city.
         if self.location is None:
             raise ValueError('The location must set with `api.location = _`.')
@@ -246,7 +258,6 @@ class SeattleFoodTruckAPI():
     @lazyproperty
     def locations(self):
         """A memoized property of all locations at instantiation time."""
-        # Paginate through results on the `locations` table.
         locations = list(map(Location, self._paginate('locations')))
         return locations
 
@@ -266,6 +277,7 @@ class SeattleFoodTruckAPI():
         -------
         content : list
             All items found in the given table as a result of pagination.
+
         """
         params = params or {}
         content = []
