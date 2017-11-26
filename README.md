@@ -6,7 +6,7 @@ Python Library for finding Seattle Food Trucks
 **Installation**
 
 ```bash
-pip install git@github.com:clintval/seattle-food-truck.git
+pip install seattle-food-truck
 ```
 
 **Usage**
