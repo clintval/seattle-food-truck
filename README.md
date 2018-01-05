@@ -12,11 +12,11 @@ pip install seattle-food-truck
 **Usage**
 
 ```python
->>> from seattle_food_truck import SeattleFoodTruckClient
->>> client = SeattleFoodTruckAPI()
+>>> import seatt_food_truck as sft
+>>> client = sft.Client()
 ```
 ```python
->>> address = '3131 Elliot Ave. Seattle Washington'
+>>> address = '3131 Elliott Ave, Seattle, WA 98121'
 >>> location = client.location_closest_to(address=address)
 >>> print(location)
 Location(name="PI Building", address="101 Elliott Ave W, Seattle, WA, United States", uid=69)
