@@ -12,7 +12,7 @@ pip install seattle-food-truck
 **Usage**
 
 ```python
->>> import seatt_food_truck as sft
+>>> import seattle_food_truck as sft
 >>> client = sft.Client()
 ```
 ```python
