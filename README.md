@@ -12,27 +12,17 @@ pip install seattle-food-truck
 **Usage**
 
 ```python
->>> import seattle_food_truck as sft
->>> client = sft.Client()
-```
-```python
->>> address = '3131 Elliott Ave, Seattle, WA 98121'
->>> location = client.location_closest_to(address=address)
->>> print(location)
-Location(name="PI Building", address="101 Elliott Ave W, Seattle, WA, United States", uid=69)
+from seattle_food_truck import Client
+
+location = Client().nearest_location_to('3131 Elliot Ave. Seattle WA')
+
+for truck in location.trucks_today():
+    print(truck)
 ```
 
-
-One thing to note is that a `Location` must be bound to the main class before food trucks can be queried as there are hundreds of food truck bookings and queries across the entire city are quite time-consuming. At this point we must bind the location to the API for subsequent queries on food trucks.
-
-```python
->>> client.location = location
 ```
-
-```python
->>> client.trucks_tomorrow()
-[Truck("Sam Choy's Poke To The Max", style="Hawaiian"),
- Truck("Bumbu Truck", style="Asian")]
+Truck("NOSH", style="Seafood")
+Truck("Raney Brothers BBQ", style="BBQ")
 ```
 
 

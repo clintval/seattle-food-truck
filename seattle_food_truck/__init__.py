@@ -3,12 +3,17 @@ import datetime
 from functools import partial
 from urllib.parse import quote_plus
 from math import radians, cos, sin, asin, sqrt
+from typing import Any, Callable, Iterable, List, Mapping, Optional, Tuple
+
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 
 # Dependency exists because the Python standard library cannot parse a
 # timestamp with a colon in the time zone offset.
 from dateutil.parser import parse as date_parse
+from lazy_property import LazyProperty
+from requests_futures.sessions import FuturesSession
 
 __all__ = [
     'Location',
@@ -16,14 +21,19 @@ __all__ = [
     'Truck',
     'haversine_distance',
     'lat_long_from_address',
-    'humanize_list']
+    'humanize_list'
+]
 
-HOST = 'https://www.seattlefoodtruck.com/api/{table}?'
+HOST = 'https://www.seattlefoodtruck.com/api/{endpoint}'
 IMAGE_HOST = 'https://s3-us-west-2.amazonaws.com/seattlefoodtruck-uploads-prod'
+MAX_WORKERS = 25
 
 
-def haversine_distance(lat_long1, lat_long2):
-    """Distance between two points on Earth in miles"""
+def haversine_distance(
+    lat_long1: Iterable[float],
+    lat_long2: Iterable[float]
+) -> float:
+    """Distance between two points on Earth in miles."""
     lon1, lat1, lon2, lat2 = map(radians, [*lat_long1, *lat_long2])
 
     long_dist = lon2 - lon1
@@ -31,29 +41,27 @@ def haversine_distance(lat_long1, lat_long2):
     a = sin(lat_dist / 2)**2 + cos(lat1) * cos(lat2) * sin(long_dist / 2)**2
     c = 2 * asin(sqrt(a))
 
-    miles = 3959 * c  # Radius of Earth in miles
+    miles = c * 3959  # Radius of Earth in miles
     return miles
 
 
-def lat_long_from_address(address):
-    """Returns the latitude and longitude from an address using the Google maps
-    API for geocoding.
+def lat_long_from_address(address: str) -> Tuple[float]:
+    """Find the latitude and longitude of an address.
 
     Parameters
     ----------
     address : str
-        An address on Earth. Preferrably in Seattle.
+        An address on Earth.
 
     Returns
     -------
     lat_long : tuple of float
-        The first latitude and longitude of the address found using the Google
-            maps API for geocoding.
+        The most likely latitude and longitude of `address`.
 
     """
     URL = 'https://maps.googleapis.com/maps/api/geocode/json?'
     try:
-        response = requests.get(URL, {'address': quote_plus(address)})
+        response = requests.get(URL, params={'address': quote_plus(address)})
         results, *_ = response.json().get('results')
         location = results.get('geometry').get('location')
         lat_long = location['lat'], location['lng']
@@ -62,14 +70,13 @@ def lat_long_from_address(address):
     return lat_long
 
 
-def humanize_list(array):
-    """Return a grammatically correct English phrase of a list of items. Any
-    list with items greater than 2 will, of course, use an Oxford comma.
+def humanize_list(iterable: Iterable[str]) -> str:
+    """Return a grammatically correct English phrase of a list of items.
 
     Parameters
     ----------
-    array : iterable
-        Any list of items with a __str__ method.
+    iterable : iterable of str
+        Any list of items.
 
     Returns
     -------
@@ -85,53 +92,100 @@ def humanize_list(array):
     >>> humanize_list(['tomato', 'cabbage', 'lettuce'])
     'tomato, cabbage, and lettuce'
 
+    Note
+    ----
+    Any list with length greater than two will, of course, use an Oxford comma.
+
     """
-    new = list(map(str, array))
-    if len(array) == 1:
-        return ''.join(new)
-    elif len(array) == 2:
-        return ' and '.join(new)
+    iterable = list(map(str, iterable))
+    if len(iterable) == 1:
+        return ''.join(iterable)
+    elif len(iterable) == 2:
+        return ' and '.join(iterable)
     else:
-        new[-1] = f'and {new[-1]}'
-        return ', '.join(new)
+        iterable[-1] = f'and {iterable[-1]}'
+        return ', '.join(iterable)
 
 
-class lazyproperty(object):
-    """Decorator function to memoize an expensive property"""
+def paginate(
+    url: str,
+    key: str,
+    params: Optional[Mapping]=None,
+    func: Callable[[Mapping], Any]=lambda _: _['pagination']['total_pages']
+):
+    """Get all entries from the API at `url` by pagination over `key`.
 
-    def __init__(self, func):
-        self.func = func
+    Parameters
+    ----------
+    url : str
+        URL of the API.
+    key : str
+        The key to access the content from each page.
+    func : callable
+        How to access the total number of pages from one page's response.
 
-    def __get__(self, obj, objtype=None):
-        if obj is None:
-            return self
-        value = obj.__dict__[self.func.__name__] = self.func(obj)
-        return value
+    Returns
+    -------
+    content : list
+        All items found in the given key as a result of pagination.
 
-    def __repr__(self):
-        return f'<self.__class__.__name__ func=self.func>'
+    """
+    content = []
+    params = params or {}
+    with requests.Session() as s:
+        first_page = s.get(url, params={**params, 'page': 1}).json()
+        content.extend(first_page.get(key))
+
+    with FuturesSession(executor=ThreadPoolExecutor(MAX_WORKERS)) as s:
+        async_jobs = []
+        for i in range(2, func(first_page)):
+            async_jobs.append(s.get(url, params={**params, 'page': i}))
+
+        for job in as_completed(async_jobs):
+            content.extend(job.result().json().get(key))
+    return content
 
 
-class Location(object):
-    """Represents a location where a food truck may appear"""
+class Truck(object):
+    """A food truck in Seattle."""
 
-    def __init__(self, mapping):
+    def __init__(self, mapping: Mapping):
         self.__dict__.update(mapping)
 
     @property
-    def lat_long(self):
-        """Return the latitude and longitude as a tuple"""
+    def food_description(self) -> str:
+        """Return a grammatically correct listing of categorical food items."""
+        return humanize_list(self.food_categories)
+
+    def __repr__(self) -> str:
+        return (
+            f'{self.__class__.__name__}('
+            f'"{self.name}", style="{self.food_description}")')
+
+
+class Location(object):
+    """Represents a location where a food truck may appear."""
+
+    def __init__(self, mapping: Mapping):
+        self.__dict__.update(mapping)
+
+    @property
+    def lat_long(self) -> Tuple[float]:
+        """Return the latitude and longitude."""
         return self.latitude, self.longitude
 
-    def distance_from(self, address=None, lat_long=None):
-        """The distance in miles between this food truck locationa and a
-        specified location. Either `address` or `lat_long` must be specified.
+    def distance_from(
+        self,
+        address: Optional[str]=None,
+        lat_long: Optional[Iterable[float]]=None
+    ) -> float:
+        """The distance in miles between this location and another.
 
         Parameters
         ----------
-        address : str
+        address : str, optional
             The address of the query location.
-        lat_long : tuple of floats
+        lat_long : iterable of floats, optional
             The latitude and longitude of the query location.
 
         Returns
@@ -148,13 +202,13 @@ class Location(object):
             lat_long is not None and
             not all(isinstance(_, float) for _ in lat_long)
         ):
-            raise ValueError('`lat_long` must be a list of floats.')
+            raise ValueError('`lat_long` must be an iterable of floats.')
 
         distance = haversine_distance(self.lat_long, lat_long)
         return distance
 
-    def trucks_on_day(self, date):
-        """Returns the food trucks at a given date"""
+    def trucks_on_day(self, date: datetime.date) -> List[Truck]:
+        """Returns the food trucks at a given date."""
         assert isinstance(date, datetime.date)
 
         trucks = []
@@ -168,22 +222,27 @@ class Location(object):
 
         return trucks
 
-    def trucks_today(self):
-        """Returns food trucks scheduled for today"""
+    def trucks_n_days_from_now(self, n: int) -> List[Truck]:
+        """Return the food trucks at a given date n days from now."""
+        today = datetime.datetime.today().date()
+        return self.trucks_on_day(today + datetime.timedelta(days=n))
+
+    def trucks_today(self) -> List[Truck]:
+        """Return food trucks scheduled for today."""
         today = datetime.datetime.today().date()
         return self.trucks_on_day(today)
 
-    def trucks_tomorrow(self):
-        """Returns food trucks scheduled for tomorrow"""
+    def trucks_tomorrow(self) -> List[Truck]:
+        """Return food trucks scheduled for tomorrow."""
         today = datetime.datetime.today().date()
         return self.trucks_on_day(today + datetime.timedelta(days=1))
 
-    def trucks_yesterday(self):
-        """Returns yesterday's food trucks so you can be sad you missed them"""
+    def trucks_yesterday(self) -> List[Truck]:
+        """Return yesterday's food trucks."""
         today = datetime.datetime.today().date()
         return self.trucks_on_day(today - datetime.timedelta(days=1))
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             f'{self.__class__.__name__}('
             f'name="{self.name.strip()}", '
@@ -191,39 +250,52 @@ class Location(object):
             f'uid={self.uid})')
 
 
-class Truck(object):
-    """Represents a food truck in Seattle"""
-
-    def __init__(self, mapping):
-        self.__dict__.update(mapping)
-
-    @property
-    def food_description(self):
-        """Return a grammatically correct listing of categorical food items"""
-        return humanize_list(self.food_categories)
-
-    def __repr__(self):
-        return (
-            f'{self.__class__.__name__}('
-            f'"{self.name}", style="{self.food_description}")')
-
-
 class Client(object):
-    """A class that represents the API at www.seattlefoodtrucks.com."""
+    """A representation of the API at www.seattlefoodtrucks.com."""
 
-    def location_closest_to(self, address=None, lat_long=None):
-        """Find the food truck location closest to the query location
+    def nearest_location_to(
+        self,
+        address: Optional[str]=None,
+        lat_long: Optional[Iterable[float]]=None
+    ) -> Location:
+        """Find the food truck location closest to the query location.
 
         Parameters
         ----------
-        address : str
+        address : str, optional
             The address of the query location.
-        lat_long : tuple of floats
+        lat_long : iterable of floats, optional
             The latitude and longitude of the query location.
 
         Returns
         -------
         location : Location
+            The food truck location closed to the query location.
+
+        """
+        (distance, location), *_ = self.locations_closest_to(
+            address=address,
+            lat_long=lat_long)
+
+        return location
+
+    def locations_closest_to(
+        self,
+        address: Optional[str]=None,
+        lat_long: Optional[Iterable[float]]=None
+    ) -> List[Tuple[float, Location]]:
+        """Find the food truck locations closest to the query location.
+
+        Parameters
+        ----------
+        address : str, optional
+            The address of the query location.
+        lat_long : tuple of floats, optional
+            The latitude and longitude of the query location.
+
+        Returns
+        -------
+        location : list of (float, Location) tuples
             The food truck location closed to the query location.
 
         """
@@ -235,7 +307,7 @@ class Client(object):
             lat_long is not None and
             not all(isinstance(_, float) for _ in lat_long)
         ):
-            raise ValueError('`lat_long` must be a list of floats.')
+            raise ValueError('`lat_long` must be an iterable of floats.')
 
         distance_from_reference = partial(
             haversine_distance,
@@ -244,17 +316,17 @@ class Client(object):
         distances = list(map(
             distance_from_reference,
             [l.lat_long for l in self.locations]))
-        location = self.locations[distances.index(min(distances))]
-        return location
+
+        return sorted(zip(distances, self.locations), key=lambda _: _[0])
 
     @staticmethod
     def events_at_location(location):
-        """Lists the events at a given location
+        """Lists the events at a given location.
 
         Returns
         -------
         location : Location
-            The Location to query
+            The Location to query.
 
         """
         params = {
@@ -262,51 +334,19 @@ class Client(object):
             'with_active_trucks': 'true',
             'include_bookings': 'true',
             'with_booking_status': 'approved'}
-
-        # Paginate through results with these parameters on the `events` table.
-        events = Client._paginate(HOST, 'events', params)
+        events = paginate(
+            HOST.format(endpoint='events'),
+            key='events',
+            params=params)
         return events
 
-    @lazyproperty
+    @LazyProperty
     def locations(self):
         """A memoized property of all locations at instantiation time."""
-        locations = list(map(Location, self._paginate(HOST, 'locations')))
-        return locations
+        locations = map(
+            Location,
+            paginate(HOST.format(endpoint='locations'), key='locations'))
+        return list(locations)
 
-    @staticmethod
-    def _paginate(host, table, params=None):
-        """Helper function to paginate through the pages of a call to the web
-        API. An initial call is made to set the `total_pages` variable and then
-        all further pages are requested.
-
-        Parameters
-        ----------
-        host : str
-            URL destination of the web host API.
-        table : str
-            The table name from the web host API.
-        params : None or dict
-            A list of API parameters.
-
-        Returns
-        -------
-        content : list
-            All items found in the given table as a result of pagination.
-
-        """
-        params = params or {}
-        content = []
-
-        page = total_pages = 1
-        while page <= total_pages:
-            json = requests.get(
-                host.format(table=table),
-                params={**params, 'page': str(page)}).json()
-
-            page += 1
-            total_pages = json.get('pagination').get('total_pages')
-            content.extend(json.get(table))
-        return content
-
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f'{self.__class__.__name__}()'
