@@ -320,7 +320,7 @@ class Client(object):
         return sorted(zip(distances, self.locations), key=lambda _: _[0])
 
     @staticmethod
-    def events_at_location(location):
+    def events_at_location(location: Location) -> List[Mapping]:
         """Lists the events at a given location.
 
         Returns
@@ -341,7 +341,7 @@ class Client(object):
         return events
 
     @LazyProperty
-    def locations(self):
+    def locations(self) -> List[Location]:
         """A memoized property of all locations at instantiation time."""
         locations = map(
             Location,
