@@ -35,7 +35,7 @@ def trucks_today(context, location_uid):
 
     location = None
     for location in client.locations:
-        if location.uid == location_uid:
+        if int(location.uid) == int(location_uid):
             break
 
     if not location:
@@ -54,7 +54,7 @@ def trucks_tomorrow(context, location_uid):
 
     location = None
     for location in client.locations:
-        if location.uid == location_uid:
+        if int(location.uid) == int(location_uid):
             break
 
     if not location:
