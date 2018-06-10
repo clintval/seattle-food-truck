@@ -3,7 +3,7 @@ import click
 
 from terminaltables import SingleTable
 
-from seattle_food_truck import Location, SeattleFoodTruckClient
+from seattle_food_truck import Client
 
 
 @click.group()
@@ -17,7 +17,7 @@ def cli(context):
 @click.pass_context
 def locations(context):
     """Print the locations with food truck bookings."""
-    client = SeattleFoodTruckClient()
+    client = Client()
 
     table = SingleTable([['Name', 'UID']], title='Locations')
 
@@ -28,13 +28,20 @@ def locations(context):
 
 @cli.command()
 @click.pass_context
-@click.option('--location-uid', required=True)
+@click.option('--location-uid', type=int, required=True)
 def trucks_today(context, location_uid):
     """Print the truck bookings today."""
-    client = SeattleFoodTruckClient()
-    client.location = Location({'uid': int(location_uid)})
+    client = Client()
 
-    for truck in client.trucks_today():
+    location = None
+    for location in client.locations:
+        if location.uid == location_uid:
+            break
+
+    if not location:
+        raise ValueError(f'No location with UID {location_uid}!')
+
+    for truck in location.trucks_today():
         print(truck)
 
 
@@ -43,10 +50,17 @@ def trucks_today(context, location_uid):
 @click.option('--location-uid', required=True)
 def trucks_tomorrow(context, location_uid):
     """Print the truck bookings tomorrow"""
-    client = SeattleFoodTruckClient()
-    client.location = Location({'uid': int(location_uid)})
+    client = Client()
 
-    for truck in client.trucks_tomorrow():
+    location = None
+    for location in client.locations:
+        if location.uid == location_uid:
+            break
+
+    if not location:
+        raise ValueError(f'No location with UID {location_uid}!')
+
+    for truck in location.trucks_tomorrow():
         print(truck)
 
 
