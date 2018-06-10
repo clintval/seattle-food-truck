@@ -10,9 +10,7 @@ PACKAGE = 'seattle-food-truck'
 AUTHOR = 'clintval'
 ARTIFACT = f'https://github.com/{AUTHOR}/{PACKAGE}/archive/v{VERSION}.tar.gz'
 
-DESCRIPTION = """
-Python client for the glorious food trucks in Seattle
-"""
+DESCRIPTION = """Python client for the glorious food trucks in Seattle"""
 
 setup(
     name=PACKAGE.replace('-', '_'),
@@ -46,7 +44,7 @@ setup(
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',
         'Intended Audience :: Developers',
-        'License :: OSI Approved :: MIT License'
+        'License :: OSI Approved :: MIT License',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
     ]
