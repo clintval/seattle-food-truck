@@ -1,4 +1,4 @@
-<h1 align="center">sample-sheet</h2>
+<h1 align="center">seattle-food-truck</h2>
 
 <p align="center">A Python 3.6 library for discovering Seattle Food Truck schedules</p>
 
