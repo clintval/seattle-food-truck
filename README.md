@@ -1,6 +1,6 @@
 <h1 align="center">seattle-food-truck</h2>
 
-<p align="center">A Python 3.6 library for discovering Seattle Food Truck schedules</p>
+<p align="center">A Python 3.6+ library for discovering Seattle Food Truck schedules</p>
 
 <p align="center">
   <a href="#installation"><strong>Installation</strong></a>
@@ -60,15 +60,17 @@ There are 300 locations.
 ]
 ```
 
-It would be easier if we could sort the list of locations by their proximity to my home or job site! The `Client` provides two functions for this purpose.
+It would be easier if we could sort the list of locations by their proximity to my home or job site!
+The `Client` provides two functions for this purpose.
 
 The first discovers all locations ranked by their direct distance away.
 
 ```python
-work_address = '3131 Elliot Ave. Seattle WA'
+address = '3131 Elliott Ave Seattle WA 98121'
 
-for distance, location in sft.locations_closest_to(work_address):
-    print(f'{distance:0.2f} miles away: {location.name}\n\t{location.address}')
+for distance, location in sft.locations_closest_to(address):
+    print(f'{distance:0.2f} miles away: {location.name}
+    print('\t' + location.address)
 ```
 
 ```
@@ -86,7 +88,7 @@ for distance, location in sft.locations_closest_to(work_address):
 The second simply returns the location nearest to me.
 
 ```python
-location = sft.nearest_location_to(work_address)
+location = sft.nearest_location_to(address)
 
 for truck in location.trucks_today():
     print(truck)
