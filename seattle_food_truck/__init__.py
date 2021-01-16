@@ -1,8 +1,8 @@
 import datetime
 
 from functools import partial
-from urllib.parse import quote_plus
 from math import radians, cos, sin, asin, sqrt
+from operator import itemgetter
 from typing import Any, Callable, Iterable, List, Mapping, Optional, Tuple
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -12,6 +12,8 @@ import requests
 # Dependency exists because the Python standard library cannot parse a
 # timestamp with a colon in the time zone offset.
 from dateutil.parser import parse as date_parse
+from geopy.distance import geodesic
+from geopy.geocoders import Nominatim
 from lazy_property import LazyProperty
 from requests_futures.sessions import FuturesSession
 
@@ -19,30 +21,14 @@ __all__ = [
     'Location',
     'Client',
     'Truck',
-    'haversine_distance',
     'lat_long_from_address',
     'humanize_list'
 ]
 
+GEOLOCATOR = Nominatim(user_agent="seattle-food-truck")
 HOST = 'https://www.seattlefoodtruck.com/api/{endpoint}'
 IMAGE_HOST = 'https://s3-us-west-2.amazonaws.com/seattlefoodtruck-uploads-prod'
 MAX_WORKERS = 25
-
-
-def haversine_distance(
-    lat_long1: Iterable[float],
-    lat_long2: Iterable[float]
-) -> float:
-    """Distance between two points on Earth in miles."""
-    lon1, lat1, lon2, lat2 = map(radians, [*lat_long1, *lat_long2])
-
-    long_dist = lon2 - lon1
-    lat_dist = lat2 - lat1
-    a = sin(lat_dist / 2)**2 + cos(lat1) * cos(lat2) * sin(long_dist / 2)**2
-    c = 2 * asin(sqrt(a))
-
-    miles = c * 3959  # Radius of Earth in miles
-    return miles
 
 
 def lat_long_from_address(address: str) -> Tuple[float]:
@@ -59,15 +45,9 @@ def lat_long_from_address(address: str) -> Tuple[float]:
         The most likely latitude and longitude of `address`.
 
     """
-    URL = 'https://maps.googleapis.com/maps/api/geocode/json?'
-    try:
-        response = requests.get(URL, params={'address': quote_plus(address)})
-        results, *_ = response.json().get('results')
-        location = results.get('geometry').get('location')
-        lat_long = location['lat'], location['lng']
-    except ValueError:
-        raise ValueError('Lat/Long not found for address: {address}')
-    return lat_long
+    location = GEOLOCATOR.geocode(address)
+    assert location != None, f"Could not find a location matching address: {address}"
+    return (location.latitude, location.longitude)
 
 
 def humanize_list(iterable: Iterable[str]) -> str:
@@ -203,8 +183,7 @@ class Location(object):
             not all(isinstance(_, float) for _ in lat_long)
         ):
             raise ValueError('`lat_long` must be an iterable of floats.')
-
-        distance = haversine_distance(self.lat_long, lat_long)
+        distance = geodesic(self.lat_long, lat_long).miles
         return distance
 
     def trucks_on_day(self, date: datetime.date) -> List[Truck]:
@@ -295,8 +274,9 @@ class Client(object):
 
         Returns
         -------
-        location : list of (float, Location) tuples
-            The food truck location closed to the query location.
+        distance_and_locations : list of (float, Location) tuples
+            The distance in miles and food truck location as compared the
+            query location.
 
         """
         if address is None and lat_long is None:
@@ -309,15 +289,12 @@ class Client(object):
         ):
             raise ValueError('`lat_long` must be an iterable of floats.')
 
-        distance_from_reference = partial(
-            haversine_distance,
-            lat_long2=lat_long)
+        distance_and_locations = [
+            (geodesic(lat_long, location.lat_long).miles, location)
+            for location in self.locations
+        ]
 
-        distances = list(map(
-            distance_from_reference,
-            [l.lat_long for l in self.locations]))
-
-        return sorted(zip(distances, self.locations), key=lambda _: _[0])
+        return sorted(distance_and_locations, key=itemgetter(0))
 
     @staticmethod
     def events_at_location(location: Location) -> List[Mapping]:
