@@ -5,7 +5,7 @@ from setuptools import find_packages, setup
 with io.open('README.md', encoding='utf-8') as f:
     long_description = f.read()
 
-VERSION = '0.2.0'
+VERSION = '0.3.0'
 PACKAGE = 'seattle-food-truck'
 AUTHOR = 'clintval'
 ARTIFACT = f'https://github.com/{AUTHOR}/{PACKAGE}/archive/v{VERSION}.tar.gz'
@@ -26,6 +26,7 @@ setup(
     py_modules=[PACKAGE],
     install_requires=[
         'click',
+        'geopy',
         'lazy-property',
         'python-dateutil',
         'requests',
@@ -47,5 +48,7 @@ setup(
         'License :: OSI Approved :: MIT License',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
     ]
 )
