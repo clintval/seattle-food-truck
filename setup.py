@@ -5,7 +5,7 @@ from setuptools import find_packages, setup
 with io.open('README.md', encoding='utf-8') as f:
     long_description = f.read()
 
-VERSION = '0.3.0'
+VERSION = '0.3.1'
 PACKAGE = 'seattle-food-truck'
 AUTHOR = 'clintval'
 ARTIFACT = f'https://github.com/{AUTHOR}/{PACKAGE}/archive/v{VERSION}.tar.gz'

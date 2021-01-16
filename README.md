@@ -46,16 +46,16 @@ print(sft.locations)
 ```
 
 ```
-There are 300 locations.
+There are 675 locations.
 
 [
-  Location(name="10109 Lakewood Towne Center Boulevard Southwest, Lakewood, WA, USA", address="10109 Lakewood Towne Center Boulevard Southwest, Lakewood, WA, USA", uid=377),
-  Location(name="110 9th Avenue So
-  uthwest, Puyallup, WA, USA", address="110 9th Avenue Southwest, Puyallup, WA, USA", uid=375),
-  Location(name="11211 Main Street, Bellevue, WA, USA", address="11211 Main Street, Bellevue, WA, USA", uid=368),
-  Location(name="1201 Main Street, Sumner, WA, USA", address="1201 Main Street, Sumner, WA, USA", uid=382),
-  Location(name="1208 10th St, Snohomish, WA, USA", address="1208 10th St, Snohomish, WA, USA", uid=390),
-  Location(name="1208 10th Street, Snohomish, WA, USA", address="1208 10th Street, Snohomish, WA, USA", uid=397),
+  Location(name="Metropolitan Park", address="1100 Olive Way, Seattle, WA, United States", uid=283),
+  Location(name="10020 Southeast 256th Street, Kent, WA, USA", address="10020 Southeast 256th Street, Kent, WA, USA", uid=633),
+  Location(name="1020 Central Avenue North, Kent, WA, USA", address="1020 Central Avenue North, Kent, WA, USA", uid=866),
+  Location(name="10256 16th Avenue Southwest, Seattle, WA, USA", address="10256 16th Avenue Southwest, Seattle, WA, USA", uid=864),
+  Location(name="103 110th Ave NE, Bellevue, WA, USA", address="103 110th Ave NE, Bellevue, WA, USA", uid=553),
+  Location(name="104 Washington Avenue South, Orting, WA, USA", address="104 Washington Avenue South, Orting, WA, USA", uid=806),
+  Location(name="10416 193rd Street Court East, Graham, WA, USA", address="10416 193rd Street Court East, Graham, WA, USA", uid=807),
   ...
 ]
 ```
@@ -69,7 +69,7 @@ The first discovers all locations ranked by their direct distance away.
 address = '3131 Elliott Ave Seattle WA 98121'
 
 for distance, location in sft.locations_closest_to(address):
-    print(f'{distance:0.2f} miles away: {location.name}
+    print(f'{distance:0.2f} miles away: {location.name}')
     print('\t' + location.address)
 ```
 
@@ -116,12 +116,12 @@ Options:
 
 Commands:
   locations        Print the locations with food truck bookings.
-  trucks_today     Print the truck bookings today.
-  trucks_tomorrow  Print the truck bookings tomorrow
+  trucks-today     Print the truck bookings today.
+  trucks-tomorrow  Print the truck bookings tomorrow
 ```
 
 ```bash
-❯ sft trucks_tomorrow --location-uid 69
+❯ sft trucks-tomorrow --location-uid 69
 Truck("Sam Choy's Poke To The Max", style="Hawaiian")
 Truck("Bumbu Truck", style="Asian")
 ```
